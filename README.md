@@ -6,7 +6,7 @@ Portal React + Vite para los formularios operativos especializados de SKC.
 
 - URL: `https://portal-formsbcop2.sucasainmobiliaria.com.co`
 - API: `https://apiskccbo2.sucasainmobiliaria.com.co/api`
-- Document root recomendado en Hostinger: la carpeta `dist/` de este repositorio.
+- Rama de despliegue: `main`.
 
 La URL de la API está versionada en `.env.production` porque es pública y Vite la incorpora durante la compilación.
 
@@ -15,7 +15,14 @@ npm ci
 npm run build
 ```
 
-Publica el contenido de `dist/`. El `.htaccess` incluido permite abrir directamente rutas SPA como `/modules/inventory`.
+En Hostinger, despliega el repositorio completo en la carpeta raíz vacía del
+subdominio (`public_html`). El `.htaccess` de la raíz sirve únicamente el contenido
+compilado de `dist/`, protege el código fuente y permite abrir directamente rutas
+SPA como `/modules/inventory`.
+
+La carpeta `dist/` está versionada para que el hosting pueda publicar el portal sin
+necesitar Node.js. Cuando cambies el frontend, ejecuta el build, confirma también los
+cambios generados en `dist/` y luego haz push.
 
 ## Desarrollo
 

@@ -1,0 +1,14 @@
+Options -Indexes
+RewriteEngine On
+
+# El repositorio completo puede desplegarse en public_html: solo se expone dist/.
+RewriteRule ^(?:src|public|node_modules)(?:/|$) - [F,L,NC]
+RewriteRule ^(?:\.env|\.git|package(?:-lock)?\.json|tsconfig(?:\.[^.]+)?\.json|vite\.config\.[^.]+|README\.md)$ - [F,L,NC]
+
+# Los archivos compilados por Vite usan rutas absolutas desde el dominio.
+RewriteRule ^assets/(.*)$ dist/assets/$1 [L,NC]
+RewriteRule ^inventory/(.*)$ dist/inventory/$1 [L,NC]
+RewriteRule ^dist(?:/|$) - [L,NC]
+
+# React Router: cualquier ruta visible carga la aplicación compilada.
+RewriteRule ^ dist/index.html [L]
