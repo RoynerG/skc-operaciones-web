@@ -3,7 +3,8 @@ RewriteEngine On
 
 # El repositorio completo puede desplegarse en public_html: solo se expone dist/.
 RewriteRule ^(?:src|public|node_modules)(?:/|$) - [F,L,NC]
-RewriteRule ^(?:\.env|\.git|package(?:-lock)?\.json|tsconfig(?:\.[^.]+)?\.json|vite\.config\.[^.]+|README\.md)$ - [F,L,NC]
+RewriteRule ^(?:\.env|\.git) - [F,L,NC]
+RewriteRule ^(?:package(?:-lock)?\.json|tsconfig(?:\.[^.]+)?\.json|vite\.config\.[^.]+|README\.md)$ - [F,L,NC]
 
 # Los archivos compilados por Vite usan rutas absolutas desde el dominio.
 RewriteRule ^assets/(.*)$ dist/assets/$1 [L,NC]
