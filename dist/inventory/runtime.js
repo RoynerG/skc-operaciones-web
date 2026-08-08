@@ -243,8 +243,7 @@
         const name = String(field.name || '');
         if (name.startsWith('descripcion_')) return 'Elemento';
         if (name.startsWith('estado_')) return 'Estado';
-        if (name.startsWith('texto_cantidad_')) return 'Cantidad especial';
-        if (name.startsWith('ninguna_')) return 'Disponibilidad';
+        if (name.startsWith('cantidad_') || name.startsWith('texto_cantidad_')) return 'Cantidad';
         return cleanLabel(field.label || name);
     }
 
@@ -258,6 +257,8 @@
                 if (item.kind === 'repeater') fields.push(...(item.fields || []));
             });
             Promise.all(fields.map(async field => {
+                const name = String(field.name || '');
+                if (name.startsWith('ninguna_')) return null;
                 let options = Array.isArray(field.options) ? field.options : [];
                 if (!options.length && field.glossaryId) {
                     if (glossaryCache.has(field.glossaryId)) options = glossaryCache.get(field.glossaryId);
@@ -267,17 +268,29 @@
                         glossaryCache.set(field.glossaryId, options);
                     }
                 }
+                if (name.startsWith('cantidad_')) {
+                    options = [{ value: '__numero__', label: 'Número' }];
+                }
+                if (name.startsWith('texto_cantidad_')) {
+                    options = options.filter(option => String(option.value || option.label || '').toLowerCase() !== 'nada');
+                }
                 return { label: aiGuideLabel(field), options };
             })).then(groups => {
                 if (!active) return;
-                const seen = new Set();
-                setOptionGroups(groups.filter(group => {
-                    if (!group.options.length) return false;
-                    const key = group.label + ':' + group.options.map(option => option.value).join('|');
-                    if (seen.has(key)) return false;
-                    seen.add(key);
-                    return true;
-                }));
+                const merged = new Map();
+                groups.filter(Boolean).forEach(group => {
+                    if (!group.options.length) return;
+                    const current = merged.get(group.label) || [];
+                    const seen = new Set(current.map(option => String(option.value)));
+                    group.options.forEach(option => {
+                        const key = String(option.value || option.label || '');
+                        if (!key || seen.has(key)) return;
+                        seen.add(key);
+                        current.push(option);
+                    });
+                    merged.set(group.label, current);
+                });
+                setOptionGroups(Array.from(merged, ([label, options]) => ({ label, options })));
             });
             return () => { active = false; };
         }, [section.id]);
@@ -285,9 +298,9 @@
         return h('div', { className: 'skc-ai-guide' },
             h('div', { className: 'skc-ai-template' },
                 h('strong', null, 'Guía para dictar'),
-                h('p', null, 'Di cada elemento así:'),
-                h('code', null, 'Elemento, cantidad, material, estado y observaciones.'),
-                h('small', null, 'Ejemplo: Cerradura, cantidad 1, material metal, estado regular, se atasca al cerrar.')
+                h('p', null, 'Di uno o varios elementos usando este orden:'),
+                h('code', null, 'Elemento + cantidad (número o “Todo el inmueble”) + material + estado + observaciones'),
+                h('small', null, 'Ejemplo: Cerradura, cantidad 1, material metal, estado regular, se atasca al cerrar. “Ninguna” se usa solo cuando no existe ningún elemento.')
             ),
             optionGroups.length ? h('div', { className: 'skc-ai-options' },
                 optionGroups.map(group => h('div', { key: group.label },
@@ -366,12 +379,18 @@
                 ));
             } else {
                 const option = options[0] || { value: '1', label: field.label };
+                const preserveArray = Array.isArray(value)
+                    || String(field.name || '').startsWith('texto_cantidad_')
+                    || String(field.name || '').startsWith('ninguna_');
+                const selected = Array.isArray(value) ? value : [value];
                 control = h('label', { className: 'skc-choice skc-choice-single' },
                     h('input', {
                         id,
                         type: 'checkbox',
-                        checked: value === true || value === option.value || value === '1',
-                        onChange: event => onChange(event.target.checked ? option.value : '')
+                        checked: value === true || selected.includes(option.value) || value === '1',
+                        onChange: event => onChange(event.target.checked
+                            ? (preserveArray ? [option.value] : option.value)
+                            : (preserveArray ? [] : ''))
                     }),
                     h('span', null, option.label)
                 );
@@ -471,7 +490,25 @@
                                     error: errors[item.name + '.' + rowIndex + '.' + field.name],
                                     onChange: nextValue => {
                                         const nextRows = currentRows.slice();
-                                        nextRows[rowIndex] = { ...row, [field.name]: nextValue };
+                                        const nextRow = { ...row, [field.name]: nextValue };
+                                        const fieldName = String(field.name || '');
+                                        if (fieldName.startsWith('cantidad_') && String(nextValue || '').trim()) {
+                                            const specialQuantity = (item.fields || []).find(candidate => String(candidate.name || '').startsWith('texto_cantidad_'));
+                                            if (specialQuantity) nextRow[specialQuantity.name] = [];
+                                        }
+                                        if (fieldName.startsWith('texto_cantidad_') && (Array.isArray(nextValue) ? nextValue.length : nextValue)) {
+                                            const numericQuantity = (item.fields || []).find(candidate => String(candidate.name || '').startsWith('cantidad_'));
+                                            if (numericQuantity) nextRow[numericQuantity.name] = '';
+                                        }
+                                        if (fieldName.startsWith('ninguna_')) {
+                                            const observations = (item.fields || []).find(candidate => String(candidate.name || '').startsWith('observaciones_'));
+                                            const isNone = Array.isArray(nextValue) ? nextValue.includes('Ninguna') : nextValue === 'Ninguna';
+                                            if (observations && isNone) nextRow[observations.name] = 'Ninguna';
+                                            if (observations && !isNone && String(nextRow[observations.name] || '').trim().toLowerCase() === 'ninguna') {
+                                                nextRow[observations.name] = '';
+                                            }
+                                        }
+                                        nextRows[rowIndex] = nextRow;
                                         onChange(nextRows);
                                     }
                                 })

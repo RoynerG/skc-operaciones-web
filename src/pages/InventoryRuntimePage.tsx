@@ -27,13 +27,15 @@ export default function InventoryRuntimePage() {
       branding,
     };
 
+    const runtimeVersion = Date.now();
     let style = document.querySelector<HTMLLinkElement>('link[data-inventory-runtime]');
     if (!style) {
-      style = document.createElement('link'); style.rel = 'stylesheet'; style.href = '/inventory/runtime.css';
+      style = document.createElement('link'); style.rel = 'stylesheet';
       style.dataset.inventoryRuntime = 'true'; document.head.appendChild(style);
     }
+    style.href = `/inventory/runtime.css?v=${runtimeVersion}`;
     const script = document.createElement('script');
-    script.src = `/inventory/runtime.js?v=${Date.now()}`; script.async = true; document.body.appendChild(script);
+    script.src = `/inventory/runtime.js?v=${runtimeVersion}`; script.async = true; document.body.appendChild(script);
     return () => {
       const root = document.querySelector<HTMLElement>('.skc-inventory-app-root') as (HTMLElement & { __skcReactRoot?: { unmount: () => void } }) | null;
       script.remove(); delete window.SKCInventoryApp; delete window.wp;
