@@ -37,9 +37,9 @@
         }, (icons[name] || []).map((entry, index) => h(entry[0], { ...entry[1], key: index })));
     }
 
-    async function api(path, options) {
+    async function api(path, options, timeoutMs = 35000) {
         const controller = new AbortController();
-        const timeout = window.setTimeout(() => controller.abort(), 35000);
+        const timeout = window.setTimeout(() => controller.abort(), timeoutMs);
         try {
             const response = await fetch(config.restUrl.replace(/\/$/, '') + path, {
                 method: 'GET',
@@ -59,6 +59,11 @@
                 throw error;
             }
             return data;
+        } catch (error) {
+            if (error && error.name === 'AbortError') {
+                throw new Error('MiniMax tardó demasiado en responder. Intenta nuevamente con una descripción más corta.');
+            }
+            throw error;
         } finally {
             window.clearTimeout(timeout);
         }
@@ -619,7 +624,7 @@
                 const result = await api('/ai/fill', {
                     method: 'POST',
                     body: JSON.stringify({ mode, sectionId: currentSection.id, transcript })
-                });
+                }, 90000);
                 const merged = mergeAiValues(valuesRef.current, result.values || {}, currentSection);
                 if (!Object.keys(merged.patch).length) throw new Error('La IA no encontró campos aplicables en esta sección.');
                 const previous = {};
