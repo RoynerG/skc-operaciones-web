@@ -39,5 +39,5 @@ export interface FormSummary {
   id: number; slug: string; title: string; description: string; status: FormDefinition['status'];
   version: number; submissions: number; createdAt: string; updatedAt: string; endpoints: Endpoints;
 }
-export interface User { id: number; name: string; email: string; role: string }
+export interface User { id: number; username?: string; name: string; email: string; role: string }
 export interface Submission { id: number; status: string; values: Record<string, unknown>; actions: Array<Record<string, unknown>>; createdAt: string }

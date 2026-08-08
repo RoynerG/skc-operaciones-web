@@ -4,14 +4,14 @@ import { api, setToken } from '../api';
 import type { User } from '../types';
 
 export default function LoginPage({ onLogin }: { onLogin: (user: User) => void }) {
-  const [email, setEmail] = useState('');
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   async function submit(event: FormEvent) {
     event.preventDefault(); setError(''); setBusy(true);
     try {
-      const result = await api<{ token: string; user: User }>('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) }, true);
+      const result = await api<{ token: string; user: User }>('/auth/login', { method: 'POST', body: JSON.stringify({ username, password }) }, true);
       setToken(result.token); onLogin(result.user);
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'No se pudo iniciar sesión.'); }
     finally { setBusy(false); }
@@ -26,11 +26,11 @@ export default function LoginPage({ onLogin }: { onLogin: (user: User) => void }
     </section>
     <section className="login-panel"><form className="login-card" onSubmit={submit}>
       <div className="login-icon"><LockKeyhole size={24} /></div><span className="eyebrow">Acceso operativo</span><h2>Bienvenido de nuevo</h2><p>Ingresa para trabajar con los módulos autorizados.</p>
-      <label>Correo electrónico<input type="email" autoComplete="email" value={email} onChange={event => setEmail(event.target.value)} required /></label>
+      <label>Usuario de otras aplicaciones<input type="text" autoComplete="username" value={username} onChange={event => setUsername(event.target.value)} required /></label>
       <label>Contraseña<input type="password" autoComplete="current-password" value={password} onChange={event => setPassword(event.target.value)} required /></label>
       {error && <div className="inline-error" role="alert">{error}</div>}
       <button className="button button-primary button-wide" disabled={busy}>{busy ? <span className="spinner small" /> : null}{busy ? 'Ingresando…' : 'Ingresar'}{!busy && <ArrowRight size={18} />}</button>
-      <small className="login-help">En desarrollo usa las credenciales definidas en <code>backend/.env</code>.</small>
+      <small className="login-help">Usa las mismas credenciales de las otras aplicaciones de SKC.</small>
     </form></section>
   </div>;
 }
