@@ -1,6 +1,7 @@
 import * as React from 'react';
 import { createRoot } from 'react-dom/client';
 import { getToken } from '../api';
+import { useBranding } from '../branding';
 
 declare global {
   interface Window {
@@ -10,6 +11,7 @@ declare global {
 }
 
 export default function InventoryRuntimePage() {
+  const branding = useBranding();
   React.useEffect(() => {
     const params = new URLSearchParams(location.search);
     const requested = params.get('mode') || 'add';
@@ -22,6 +24,7 @@ export default function InventoryRuntimePage() {
     window.SKCInventoryApp = {
       restUrl: `${apiBase}/modules/inventory`, token: getToken(), mode, context,
       aiEnabled: true, redirectUrl: '/modules/inventory', exitUrl: '/modules/inventory',
+      branding,
     };
 
     let style = document.querySelector<HTMLLinkElement>('link[data-inventory-runtime]');
@@ -36,7 +39,7 @@ export default function InventoryRuntimePage() {
       script.remove(); delete window.SKCInventoryApp; delete window.wp;
       window.setTimeout(() => { if (!window.SKCInventoryApp) root?.__skcReactRoot?.unmount(); }, 0);
     };
-  }, []);
+  }, [branding]);
 
   return <div className="inventory-runtime-shell"><div className="skc-inventory-app-root" data-mode={new URLSearchParams(location.search).get('mode') || 'add'}><div className="center-state"><span className="spinner" />Preparando inventario…</div></div></div>;
 }

@@ -3,6 +3,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSlug } from '../router';
 import { ApiError, api, clientId } from '../api';
 import type { FormDefinition, FormField } from '../types';
+import BrandLogo from '../components/BrandLogo';
+import { useBranding } from '../branding';
 
 const draftKeyFor = (slug: string) => {
   const query = new URLSearchParams(location.search).get('draft');
@@ -14,6 +16,7 @@ const draftKeyFor = (slug: string) => {
 const empty = (value: unknown) => value === undefined || value === null || value === '' || (Array.isArray(value) && value.length === 0);
 
 export default function PublicFormPage() {
+  const branding = useBranding();
   const slug = useSlug();
   const [form, setForm] = useState<FormDefinition | null>(null);
   const [values, setValues] = useState<Record<string, unknown>>({});
@@ -78,7 +81,7 @@ export default function PublicFormPage() {
   if (!form) return <div className="public-shell"><div className={`public-loading ${status === 'error' ? 'error' : ''}`}>{status === 'loading' ? <span className="spinner" /> : <CloudOff />}<p>{message}</p></div></div>;
   if (submitted) return <div className="public-shell"><main className="success-card"><span><CheckCircle2 /></span><h1>¡Listo!</h1><p>{message}</p><small>Ya puedes cerrar esta ventana.</small></main></div>;
   const section = form.sections[sectionIndex];
-  return <div className="public-shell"><header className="public-header"><div className="public-brand"><span className="brand-mark">S</span><div><strong>SKC Form Studio</strong><small>Captura segura</small></div></div><div className={`draft-status ${status}`} aria-live="polite">{status === 'saved' ? <Cloud size={17} /> : status === 'pending' ? <span className="spinner small" /> : <CloudOff size={17} />}{message}</div></header>
+  return <div className="public-shell"><header className="public-header"><div className="public-brand"><BrandLogo /><div><strong>{branding.productName}</strong><small>Captura segura</small></div></div><div className={`draft-status ${status}`} aria-live="polite">{status === 'saved' ? <Cloud size={17} /> : status === 'pending' ? <span className="spinner small" /> : <CloudOff size={17} />}{message}</div></header>
     <div className="public-progress"><span style={{ width: `${((sectionIndex + 1) / form.sections.length) * 100}%` }} /></div>
     <main className="public-form"><aside><span className="eyebrow">{form.title}</span><h1>{section.title}</h1><p>{section.description || form.description}</p><nav aria-label="Progreso del formulario">{form.sections.map((item, index) => <button key={item.id} className={index === sectionIndex ? 'active' : index < sectionIndex ? 'done' : ''} onClick={() => setSectionIndex(index)}><span>{index < sectionIndex ? <Check size={15} /> : index + 1}</span><em>{item.title}</em></button>)}</nav></aside>
       <section className="public-card"><div className="public-card-head"><span>Sección {sectionIndex + 1} de {form.sections.length}</span><strong>{section.fields.length} {section.fields.length === 1 ? 'campo' : 'campos'}</strong></div><div className="public-fields">{section.fields.map(field => <PublicField key={field.id} field={field} value={values[field.name]} error={errors[field.name]} onChange={value => change(field.name, value)} />)}</div>

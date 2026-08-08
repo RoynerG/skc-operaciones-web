@@ -7,7 +7,7 @@
         return;
     }
 
-    const { createElement: h, Fragment, useEffect, useMemo, useRef, useState } = element;
+    const { createElement: h, Fragment, useEffect, useRef, useState } = element;
     const glossaryCache = new Map();
 
     const icons = {
@@ -155,6 +155,39 @@
     function isEmpty(value) {
         if (Array.isArray(value)) return value.length === 0;
         return value === undefined || value === null || String(value).trim() === '';
+    }
+
+    function isBlankRecord(value) {
+        return !value || typeof value !== 'object' || Object.values(value).every(isEmpty);
+    }
+
+    function mergeAiValues(currentValues, suggestedValues, section) {
+        const patch = {};
+        let fields = 0;
+        let rows = 0;
+        const items = new Map((section.items || []).filter(item => item.name).map(item => [item.name, item]));
+
+        Object.entries(suggestedValues || {}).forEach(([name, value]) => {
+            const item = items.get(name);
+            if (!item) return;
+            if (item.kind !== 'repeater') {
+                patch[name] = value;
+                fields += 1;
+                return;
+            }
+
+            const incoming = Array.isArray(value) ? value.filter(row => row && typeof row === 'object') : [];
+            if (!incoming.length) return;
+            const existing = Array.isArray(currentValues[name]) ? currentValues[name].map(row => ({ ...row })) : [];
+            if (existing.length && isBlankRecord(existing[existing.length - 1])) {
+                existing[existing.length - 1] = { ...existing[existing.length - 1], ...incoming.shift() };
+                rows += 1;
+            }
+            rows += incoming.length;
+            patch[name] = existing.concat(incoming);
+        });
+
+        return { patch, fields, rows };
     }
 
     function cleanLabel(value) {
@@ -336,7 +369,7 @@
             onChange(currentRows.concat(row));
         };
 
-        return h('section', { className: 'skc-repeater' },
+        return h('section', { className: 'skc-repeater', 'data-repeater': item.name },
             h('div', { className: 'skc-repeater-heading' },
                 h('div', null,
                     h('h3', null, item.label),
@@ -351,7 +384,11 @@
                 : currentRows.map((row, rowIndex) =>
                     h('div', { className: 'skc-repeater-row', key: rowIndex },
                         h('div', { className: 'skc-repeater-row-title' },
-                            h('strong', null, 'Elemento ' + (rowIndex + 1)),
+                            h('strong', null, (() => {
+                                const descriptionField = (item.fields || []).find(field => String(field.name || '').startsWith('descripcion_'));
+                                const description = descriptionField ? row[descriptionField.name] : '';
+                                return description || 'Elemento ' + (rowIndex + 1);
+                            })()),
                             h('button', {
                                 type: 'button',
                                 className: 'skc-icon-button skc-remove-row',
@@ -391,7 +428,9 @@
         const [navOpen, setNavOpen] = useState(false);
         const [aiOpen, setAiOpen] = useState(false);
         const [aiText, setAiText] = useState('');
-        const [aiSuggestion, setAiSuggestion] = useState(null);
+        const [aiBusy, setAiBusy] = useState(false);
+        const [aiResult, setAiResult] = useState(null);
+        const [aiUndo, setAiUndo] = useState(null);
         const [submitting, setSubmitting] = useState(false);
         const valuesRef = useRef({});
         const dirtyRef = useRef({});
@@ -450,12 +489,14 @@
         const sections = schema ? schema.sections || [] : [];
         const currentSection = sections[sectionIndex] || null;
 
-        function updateValue(name, value) {
-            const next = { ...valuesRef.current, [name]: value };
+        function updateValues(patch, message = 'Cambios pendientes...') {
+            const next = { ...valuesRef.current, ...patch };
             valuesRef.current = next;
-            dirtyRef.current[name] = value;
+            Object.entries(patch).forEach(([name, value]) => {
+                dirtyRef.current[name] = value;
+            });
             setValues(next);
-            setStatus({ kind: 'pending', text: 'Cambios pendientes...' });
+            setStatus({ kind: 'pending', text: message });
 
             window.clearTimeout(localTimerRef.current);
             localTimerRef.current = window.setTimeout(() => {
@@ -468,6 +509,10 @@
 
             window.clearTimeout(saveTimerRef.current);
             saveTimerRef.current = window.setTimeout(saveDraft, 10000);
+        }
+
+        function updateValue(name, value) {
+            updateValues({ [name]: value });
         }
 
         async function saveDraft() {
@@ -564,38 +609,46 @@
             }
         }
 
-        async function askAi() {
-            if (!aiText.trim() || !currentSection) return;
+        async function askAi(dictatedText) {
+            const transcript = typeof dictatedText === 'string' ? dictatedText.trim() : aiText.trim();
+            if (!transcript || !currentSection || aiBusy) return;
+            setAiBusy(true);
+            setAiResult(null);
             setStatus({ kind: 'saving', text: 'MiniMax está organizando la descripción...' });
             try {
                 const result = await api('/ai/fill', {
                     method: 'POST',
-                    body: JSON.stringify({ mode, sectionId: currentSection.id, transcript: aiText })
+                    body: JSON.stringify({ mode, sectionId: currentSection.id, transcript })
                 });
-                setAiSuggestion(result.values || {});
-                setStatus({ kind: 'idle', text: 'Revisa la sugerencia antes de aplicarla.' });
+                const merged = mergeAiValues(valuesRef.current, result.values || {}, currentSection);
+                if (!Object.keys(merged.patch).length) throw new Error('La IA no encontró campos aplicables en esta sección.');
+                const previous = {};
+                Object.keys(merged.patch).forEach(name => {
+                    const item = (currentSection.items || []).find(candidate => candidate.name === name);
+                    previous[name] = valuesRef.current[name] ?? (item && item.kind === 'repeater' ? [] : '');
+                });
+                setAiUndo(previous);
+                updateValues(merged.patch, 'IA aplicada. Revisa los datos resaltados en esta sección.');
+                setAiText('');
+                setAiResult({ fields: merged.fields, rows: merged.rows });
+                window.setTimeout(() => {
+                    const targetName = Object.keys(merged.patch)[0];
+                    const target = document.querySelector('[data-repeater="' + CSS.escape(targetName) + '"], [data-field="' + CSS.escape(targetName) + '"]');
+                    if (target) target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }, 80);
             } catch (error) {
+                setAiResult({ error: error.message });
                 setStatus({ kind: 'error', text: error.message });
+            } finally {
+                setAiBusy(false);
             }
         }
 
-        function applyAi() {
-            const suggested = aiSuggestion || {};
-            const effectiveValues = { ...valuesRef.current, ...suggested };
-            const fields = new Map();
-            (schema.sections || []).forEach(section => {
-                (section.items || []).forEach(item => {
-                    if (item.name) fields.set(item.name, item);
-                });
-            });
-            Object.entries(suggested).forEach(([name, value]) => {
-                const item = fields.get(name);
-                if (!item || shouldShowItem(item, effectiveValues)) updateValue(name, value);
-            });
-            setAiSuggestion(null);
-            setAiText('');
-            setAiOpen(false);
-            setStatus({ kind: 'pending', text: 'Sugerencia aplicada. Revisa los datos.' });
+        function undoAi() {
+            if (!aiUndo) return;
+            updateValues(aiUndo, 'Cambios de la IA deshechos.');
+            setAiUndo(null);
+            setAiResult(null);
         }
 
         if (loading) {
@@ -616,8 +669,13 @@
                         onClick: () => setNavOpen(!navOpen)
                     }, h(Icon, { name: 'menu' })),
                     h('div', { className: 'skc-app-title' },
-                        h('strong', null, schema.title),
-                        h('span', null, 'Sección ' + (sectionIndex + 1) + ' de ' + sections.length)
+                        config.branding && config.branding.logoUrl ? h('span', { className: 'skc-header-logo' },
+                            h('img', { src: config.branding.logoUrl, alt: config.branding.organizationName || 'SKC' })
+                        ) : null,
+                        h('span', { className: 'skc-app-title-copy' },
+                            h('strong', null, schema.title),
+                            h('span', null, 'Sección ' + (sectionIndex + 1) + ' de ' + sections.length)
+                        )
                     ),
                     h('div', { className: 'skc-save-status is-' + status.kind, role: 'status' },
                         status.kind === 'saving' ? h('span', { className: 'skc-spinner is-small' }) : null,
@@ -676,7 +734,14 @@
                         }, h(Icon, { name: 'sparkles', size: 18 }), 'Ayuda con IA') : null
                     ),
                     aiOpen ? h('section', { className: 'skc-ai-panel' },
-                        h('label', { htmlFor: 'skc-ai-text' }, 'Describe lo que observas en esta sección'),
+                        h('div', { className: 'skc-ai-heading' },
+                            h('span', null, h(Icon, { name: 'sparkles', size: 20 })),
+                            h('div', null,
+                                h('strong', null, 'Captura inteligente'),
+                                h('p', null, 'Dicta un elemento y lo completaré directamente en los campos de esta sección.')
+                            )
+                        ),
+                        h('label', { htmlFor: 'skc-ai-text' }, 'Describe lo que observas'),
                         h('div', { className: 'skc-ai-input' },
                             h('textarea', {
                                 id: 'skc-ai-text',
@@ -690,24 +755,29 @@
                                 className: 'skc-icon-button',
                                 title: 'Dictar descripción',
                                 'aria-label': 'Dictar descripción',
-                                onClick: () => startRecognition(text => setAiText(current => (current ? current + ' ' : '') + text), text => {
+                                disabled: aiBusy,
+                                onClick: () => startRecognition(text => {
+                                    setAiText(text);
+                                    askAi(text);
+                                }, text => {
                                     if (text) setStatus({ kind: 'idle', text });
                                 })
                             }, h(Icon, { name: 'mic' }))
                         ),
-                        aiSuggestion ? h('div', { className: 'skc-ai-review' },
-                            h('strong', null, Object.keys(aiSuggestion).length + ' campos sugeridos'),
-                            h('p', null, 'La IA puede equivocarse. Revisa los valores después de aplicarlos.'),
+                        aiResult ? h('div', { className: 'skc-ai-review' + (aiResult.error ? ' is-error' : ''), role: 'status', 'aria-live': 'polite' },
+                            h('strong', null, aiResult.error ? 'No pude completar los campos' : 'Campos completados en el formulario'),
+                            h('p', null, aiResult.error || ((aiResult.rows ? aiResult.rows + (aiResult.rows === 1 ? ' elemento agregado' : ' elementos agregados') : aiResult.fields + ' campos actualizados') + '. Revísalos antes de continuar.')),
                             h('div', { className: 'skc-inline-actions' },
-                                h('button', { type: 'button', className: 'skc-button skc-button-primary', onClick: applyAi }, 'Aplicar sugerencia'),
-                                h('button', { type: 'button', className: 'skc-button skc-button-quiet', onClick: () => setAiSuggestion(null) }, 'Descartar')
+                                aiUndo && !aiResult.error ? h('button', { type: 'button', className: 'skc-button skc-button-quiet', onClick: undoAi }, 'Deshacer cambios') : null,
+                                h('button', { type: 'button', className: 'skc-button skc-button-secondary', onClick: () => setAiResult(null) }, 'Cerrar aviso')
                             )
-                        ) : h('button', {
+                        ) : null,
+                        h('button', {
                             type: 'button',
                             className: 'skc-button skc-button-primary',
-                            disabled: !aiText.trim(),
-                            onClick: askAi
-                        }, h(Icon, { name: 'sparkles', size: 18 }), 'Organizar y sugerir campos')
+                            disabled: !aiText.trim() || aiBusy,
+                            onClick: () => askAi()
+                        }, aiBusy ? h('span', { className: 'skc-spinner is-small' }) : h(Icon, { name: 'sparkles', size: 18 }), aiBusy ? 'Completando campos…' : 'Completar campos ahora')
                     ) : null,
                     h('div', { className: 'skc-section-content' },
                         h('div', { className: 'skc-fields-grid' },

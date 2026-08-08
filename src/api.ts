@@ -10,7 +10,10 @@ export class ApiError extends Error {
 }
 
 export function getToken() { return localStorage.getItem(TOKEN_KEY) || ''; }
-export function setToken(token: string) { token ? localStorage.setItem(TOKEN_KEY, token) : localStorage.removeItem(TOKEN_KEY); }
+export function setToken(token: string) {
+  if (token) localStorage.setItem(TOKEN_KEY, token);
+  else localStorage.removeItem(TOKEN_KEY);
+}
 
 export async function api<T>(path: string, options: RequestInit = {}, publicRequest = false): Promise<T> {
   const controller = new AbortController();
