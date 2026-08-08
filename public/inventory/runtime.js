@@ -239,6 +239,65 @@
         return options;
     }
 
+    function aiGuideLabel(field) {
+        const name = String(field.name || '');
+        if (name.startsWith('descripcion_')) return 'Elemento';
+        if (name.startsWith('estado_')) return 'Estado';
+        if (name.startsWith('texto_cantidad_')) return 'Cantidad especial';
+        if (name.startsWith('ninguna_')) return 'Disponibilidad';
+        return cleanLabel(field.label || name);
+    }
+
+    function AiGuide({ section }) {
+        const [optionGroups, setOptionGroups] = useState([]);
+        useEffect(() => {
+            let active = true;
+            const fields = [];
+            (section.items || []).forEach(item => {
+                if (item.kind === 'field') fields.push(item);
+                if (item.kind === 'repeater') fields.push(...(item.fields || []));
+            });
+            Promise.all(fields.map(async field => {
+                let options = Array.isArray(field.options) ? field.options : [];
+                if (!options.length && field.glossaryId) {
+                    if (glossaryCache.has(field.glossaryId)) options = glossaryCache.get(field.glossaryId);
+                    else {
+                        const result = await api('/glossary/' + encodeURIComponent(field.glossaryId)).catch(() => ({ options: [] }));
+                        options = Array.isArray(result.options) ? result.options : [];
+                        glossaryCache.set(field.glossaryId, options);
+                    }
+                }
+                return { label: aiGuideLabel(field), options };
+            })).then(groups => {
+                if (!active) return;
+                const seen = new Set();
+                setOptionGroups(groups.filter(group => {
+                    if (!group.options.length) return false;
+                    const key = group.label + ':' + group.options.map(option => option.value).join('|');
+                    if (seen.has(key)) return false;
+                    seen.add(key);
+                    return true;
+                }));
+            });
+            return () => { active = false; };
+        }, [section.id]);
+
+        return h('div', { className: 'skc-ai-guide' },
+            h('div', { className: 'skc-ai-template' },
+                h('strong', null, 'Guía para dictar'),
+                h('p', null, 'Di cada elemento así:'),
+                h('code', null, 'Elemento, cantidad, material, estado y observaciones.'),
+                h('small', null, 'Ejemplo: Cerradura, cantidad 1, material metal, estado regular, se atasca al cerrar.')
+            ),
+            optionGroups.length ? h('div', { className: 'skc-ai-options' },
+                optionGroups.map(group => h('div', { key: group.label },
+                    h('strong', null, group.label),
+                    h('span', null, group.options.map(option => h('em', { key: option.value }, option.label || option.value)))
+                ))
+            ) : null
+        );
+    }
+
     function VoiceButton({ value, onChange, multiline = false }) {
         const [state, setState] = useState('');
         return h(Fragment, null,
@@ -730,60 +789,8 @@
                         h('div', null,
                             h('span', null, 'Sección ' + (sectionIndex + 1)),
                             h('h1', null, cleanLabel(currentSection.title))
-                        ),
-                        config.aiEnabled ? h('button', {
-                            type: 'button',
-                            className: 'skc-button skc-ai-button',
-                            onClick: () => setAiOpen(!aiOpen),
-                            'aria-expanded': aiOpen
-                        }, h(Icon, { name: 'sparkles', size: 18 }), 'Ayuda con IA') : null
+                        )
                     ),
-                    aiOpen ? h('section', { className: 'skc-ai-panel' },
-                        h('div', { className: 'skc-ai-heading' },
-                            h('span', null, h(Icon, { name: 'sparkles', size: 20 })),
-                            h('div', null,
-                                h('strong', null, 'Captura inteligente'),
-                                h('p', null, 'Dicta un elemento y lo completaré directamente en los campos de esta sección.')
-                            )
-                        ),
-                        h('label', { htmlFor: 'skc-ai-text' }, 'Describe lo que observas'),
-                        h('div', { className: 'skc-ai-input' },
-                            h('textarea', {
-                                id: 'skc-ai-text',
-                                rows: 3,
-                                value: aiText,
-                                onChange: event => setAiText(event.target.value),
-                                placeholder: 'Ejemplo: La puerta principal es de madera, está en buen estado y tiene dos llaves...'
-                            }),
-                            h('button', {
-                                type: 'button',
-                                className: 'skc-icon-button',
-                                title: 'Dictar descripción',
-                                'aria-label': 'Dictar descripción',
-                                disabled: aiBusy,
-                                onClick: () => startRecognition(text => {
-                                    setAiText(text);
-                                    askAi(text);
-                                }, text => {
-                                    if (text) setStatus({ kind: 'idle', text });
-                                })
-                            }, h(Icon, { name: 'mic' }))
-                        ),
-                        aiResult ? h('div', { className: 'skc-ai-review' + (aiResult.error ? ' is-error' : ''), role: 'status', 'aria-live': 'polite' },
-                            h('strong', null, aiResult.error ? 'No pude completar los campos' : 'Campos completados en el formulario'),
-                            h('p', null, aiResult.error || ((aiResult.rows ? aiResult.rows + (aiResult.rows === 1 ? ' elemento agregado' : ' elementos agregados') : aiResult.fields + ' campos actualizados') + '. Revísalos antes de continuar.')),
-                            h('div', { className: 'skc-inline-actions' },
-                                aiUndo && !aiResult.error ? h('button', { type: 'button', className: 'skc-button skc-button-quiet', onClick: undoAi }, 'Deshacer cambios') : null,
-                                h('button', { type: 'button', className: 'skc-button skc-button-secondary', onClick: () => setAiResult(null) }, 'Cerrar aviso')
-                            )
-                        ) : null,
-                        h('button', {
-                            type: 'button',
-                            className: 'skc-button skc-button-primary',
-                            disabled: !aiText.trim() || aiBusy,
-                            onClick: () => askAi()
-                        }, aiBusy ? h('span', { className: 'skc-spinner is-small' }) : h(Icon, { name: 'sparkles', size: 18 }), aiBusy ? 'Completando campos…' : 'Completar campos ahora')
-                    ) : null,
                     h('div', { className: 'skc-section-content' },
                         h('div', { className: 'skc-fields-grid' },
                             (currentSection.items || []).filter(item => shouldShowItem(item, values)).map((item, itemIndex) => {
@@ -819,6 +826,67 @@
                             })
                         )
                     ),
+                    config.aiEnabled ? h('section', { className: 'skc-ai-workspace' },
+                        h('div', { className: 'skc-ai-dock' },
+                            h('div', null,
+                                h('strong', null, 'Completa más elementos con IA'),
+                                h('span', null, 'Dicta uno o varios elementos sin volver al inicio de la sección.')
+                            ),
+                            h('button', {
+                                type: 'button',
+                                className: 'skc-button skc-ai-button',
+                                onClick: () => setAiOpen(!aiOpen),
+                                'aria-expanded': aiOpen
+                            }, h(Icon, { name: 'sparkles', size: 18 }), aiOpen ? 'Cerrar ayuda con IA' : 'Ayuda con IA')
+                        ),
+                        aiOpen ? h('section', { className: 'skc-ai-panel' },
+                            h('div', { className: 'skc-ai-heading' },
+                                h('span', null, h(Icon, { name: 'sparkles', size: 20 })),
+                                h('div', null,
+                                    h('strong', null, 'Captura inteligente'),
+                                    h('p', null, 'La IA conoce los campos y las opciones disponibles de este repetidor.')
+                                )
+                            ),
+                            h(AiGuide, { section: currentSection }),
+                            h('label', { htmlFor: 'skc-ai-text' }, 'Describe lo que observas'),
+                            h('div', { className: 'skc-ai-input' },
+                                h('textarea', {
+                                    id: 'skc-ai-text',
+                                    rows: 3,
+                                    value: aiText,
+                                    onChange: event => setAiText(event.target.value),
+                                    placeholder: 'Ejemplo: Puerta, cantidad 1, material madera, estado bueno, funciona correctamente.'
+                                }),
+                                h('button', {
+                                    type: 'button',
+                                    className: 'skc-icon-button',
+                                    title: 'Dictar descripción',
+                                    'aria-label': 'Dictar descripción',
+                                    disabled: aiBusy,
+                                    onClick: () => startRecognition(text => {
+                                        setAiText(text);
+                                        askAi(text);
+                                    }, text => {
+                                        if (text) setStatus({ kind: 'idle', text });
+                                    })
+                                }, h(Icon, { name: 'mic' }))
+                            ),
+                            aiResult ? h('div', { className: 'skc-ai-review' + (aiResult.error ? ' is-error' : ''), role: 'status', 'aria-live': 'polite' },
+                                h('strong', null, aiResult.error ? 'No pude completar los campos' : 'Campos completados en el formulario'),
+                                h('p', null, aiResult.error || ((aiResult.rows ? aiResult.rows + (aiResult.rows === 1 ? ' elemento agregado' : ' elementos agregados') : aiResult.fields + ' campos actualizados') + '. Revísalos antes de continuar.')),
+                                h('div', { className: 'skc-inline-actions' },
+                                    aiUndo && !aiResult.error ? h('button', { type: 'button', className: 'skc-button skc-button-quiet', onClick: undoAi }, 'Deshacer cambios') : null,
+                                    h('button', { type: 'button', className: 'skc-button skc-button-secondary', onClick: () => setAiResult(null) }, 'Cerrar aviso')
+                                )
+                            ) : null,
+                            h('button', {
+                                type: 'button',
+                                className: 'skc-button skc-button-primary',
+                                disabled: !aiText.trim() || aiBusy,
+                                onClick: () => askAi()
+                            }, aiBusy ? h('span', { className: 'skc-spinner is-small' }) : h(Icon, { name: 'sparkles', size: 18 }), aiBusy ? 'Completando campos…' : 'Completar campos ahora')
+                        ) : null
+                    ) : null,
                     h('footer', { className: 'skc-form-actions' },
                         h('button', {
                             type: 'button',

@@ -910,6 +910,67 @@
     background: #fffaf0;
     box-shadow: 0 10px 28px rgba(145, 89, 10, .08);
 }
+.skc-ai-workspace {
+    width: 100%;
+    max-width: 1060px;
+    margin: 22px auto 0;
+}
+.skc-ai-dock {
+    display: flex;
+    min-height: 78px;
+    padding: 15px 17px;
+    align-items: center;
+    justify-content: space-between;
+    gap: 18px;
+    border: 1px solid #ecd38d;
+    border-radius: 14px;
+    background: #fff9e9;
+}
+.skc-ai-dock > div {
+    display: grid;
+    gap: 3px;
+}
+.skc-ai-dock strong { color: var(--skc-navy); font-size: 15px; }
+.skc-ai-dock span { color: var(--skc-muted); font-size: 12px; }
+.skc-ai-workspace .skc-ai-panel {
+    margin-top: 12px;
+    margin-bottom: 0;
+}
+.skc-ai-guide {
+    margin-bottom: 18px;
+    display: grid;
+    gap: 12px;
+}
+.skc-ai-template {
+    padding: 13px 14px;
+    border: 1px solid #d7e1ed;
+    border-radius: 11px;
+    background: #fff;
+}
+.skc-ai-template strong { color: var(--skc-navy); font-size: 13px; }
+.skc-ai-template p { margin: 3px 0 7px; color: var(--skc-muted); font-size: 12px; }
+.skc-ai-template code {
+    display: block;
+    padding: 9px 11px;
+    color: #2e4e75;
+    border-radius: 8px;
+    background: #edf3fb;
+    font: 600 12px/1.45 "Poppins", sans-serif;
+}
+.skc-ai-template small { display: block; margin-top: 7px; color: var(--skc-muted); font-size: 11px; }
+.skc-ai-options { display: grid; gap: 9px; }
+.skc-ai-options > div { display: grid; gap: 6px; }
+.skc-ai-options > div > strong { color: var(--skc-ink); font-size: 12px; }
+.skc-ai-options > div > span { display: flex; flex-wrap: wrap; gap: 5px; }
+.skc-ai-options em {
+    padding: 4px 8px;
+    color: #36577f;
+    border: 1px solid #cfdae9;
+    border-radius: 999px;
+    background: #f4f7fb;
+    font-size: 10px;
+    font-style: normal;
+}
 .skc-ai-heading {
     display: flex;
     margin-bottom: 18px;
@@ -957,4 +1018,6 @@
     .skc-ai-panel { padding: 18px 14px; }
     .skc-ai-heading p { font-size: 12px; }
     .skc-repeater-row { padding: 16px 12px; }
+    .skc-ai-dock { align-items: stretch; flex-direction: column; }
+    .skc-ai-dock .skc-ai-button { width: 100%; }
 }
